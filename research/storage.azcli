@@ -1,0 +1,5 @@
+az storage account create -n MyStorageAccount -g MyResourceGroup -l westus --sku Standard_LRS
+az storage account show-connection-string -g MyResourceGroup -n MyStorageAccount
+az storage account keys list -g MyResourceGroup -n MyStorageAccount 
+az storage container create --name scripts --account-name MyStorageAccount --account-key ''
+az storage blob upload --file /path/to/file --container-name MyContainer --name filename --account-name MyStorageAccount --account-key ''

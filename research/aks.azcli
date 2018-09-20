@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Create resource group
+az group create --name myAKSCluster --location eastus
+
+# Deploy cluster
+az aks create --resource-group myAKSCluster --name myAKSCluster --node-count 1 --enable-addons monitoring --ssh-key-value ''
+
+# install kubectl
+az aks install-cli
+
+# setup kubectl perms to access cluster
+az aks get-credentials --resource-group myAKSCluster --name myAKSCluster
+
+# verify cluster deployment
+kubectl get nodes
+
+# Create YML File for app and test harness
+
+# Deploy yaml file with service descriptions
+kubectl apply -f azure-vote.yaml
+
+# Get ip addresses of services
+kubectl get service azure-vote-front --watch

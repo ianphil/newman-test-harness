@@ -1,0 +1,33 @@
+#!/bin/bash
+
+if which node > /dev/null
+  then
+    echo "Skipping installation..."
+  else
+    apt update
+    apt upgrade -y
+
+    curl -sL https://deb.nodesource.com/setup_8.x | sudo -E bash -
+    sudo apt-get install -y nodejs apache2
+
+    npm i -g newman newman-reporter-html
+
+    mkdir /mnt/data
+
+    if [ ! -d "/etc/smbcredentials" ]; then
+        mkdir /etc/smbcredentials
+    fi
+
+    if [ ! -f "/etc/smbcredentials/SANAME.cred" ]; then
+        echo "username=SANAME" >> /etc/smbcredentials/SANAME.cred
+        echo "password=SAKEY" >> /etc/smbcredentials/SANAME.cred
+    fi
+
+    chmod 600 /etc/smbcredentials/SANAME.cred
+
+    echo "//SANAME.file.core.windows.net/SHARENAME /mnt/data cifs nofail,vers=3.0,credentials=/etc/smbcredentials/SANAME.cred,dir_mode=0777,file_mode=0777,serverino" >> /etc/fstab
+
+    mount -a
+  fi
+
+exec /mnt/data/reportsd.sh &

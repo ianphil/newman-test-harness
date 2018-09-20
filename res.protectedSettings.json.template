@@ -1,0 +1,6 @@
+{
+    "commandToExecute": "./tempResponsSetup.sh",
+    "fileUris": [
+        "URLHERE"
+    ]
+}

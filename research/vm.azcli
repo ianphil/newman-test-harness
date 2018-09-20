@@ -1,0 +1,20 @@
+# Create RG
+az group create --name myResourceGroup --location eastus
+
+# Create VM
+az vm create \
+    --resource-group myResourceGroup \
+    --name myVM \
+    --image UbuntuLTS \
+    --vnet-name myVnet
+    --subnet subnet1
+    --admin-username azusr \
+    --ssh-key-value ''
+
+# Create VM Ext
+az vm extension set \
+    --resource-group myResourceGroup \
+    --vm-name myVM \
+    --name customScript \
+    --publisher Microsoft.Azure.Extensions \
+    --protected-settings ./protectedSettings.json

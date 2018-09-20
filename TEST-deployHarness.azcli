@@ -1,0 +1,114 @@
+AZ_RESOURCE_GROUP="cxhack2"
+AZ_LOCATION="eastus"
+AZ_VNET_NAME="cxtestharnessvnet"
+AZ_SUBNET="cxsubnet"
+AZ_STORAGE_ACCOUNT_NAME="cxtestharness$RANDOM"
+AZ_RESPONSE_VM_NAME="cxresponsevm"
+AZ_VM_NAME="cxharnessvm"
+AZ_CONTAINER_NAME='resources'
+AZ_EXPIRY="2018-09-30"
+AZ_SHARE_NAME="data"
+
+# Create AZ_RESOURCE_GROUP
+echo "Creating AZ group (name: $AZ_RESOURCE_GROUP, location: $AZ_LOCATION)"
+az group create --name $AZ_RESOURCE_GROUP --location $AZ_LOCATION
+
+# Create VNET to host both VMs
+echo "Creating AZ group (group: $AZ_RESOURCE_GROUP, name: $AZ_VNET_NAME, subnet name: $AZ_SUBNET)"
+az network vnet create -g $AZ_RESOURCE_GROUP -n $AZ_VNET_NAME --address-prefix 10.0.0.0/16 --subnet-name $AZ_SUBNET --subnet-prefix 10.0.0.0/24
+
+# Create Storage Account, get connection string, upload sample postman collection and script
+echo "Creating AZ storage account (name: $AZ_STORAGE_ACCOUNT_NAME, group: $AZ_RESOURCE_GROUP, location: $AZ_LOCATION, SKU: Standard_LRS)"
+az storage account create -n $AZ_STORAGE_ACCOUNT_NAME -g $AZ_RESOURCE_GROUP -l $AZ_LOCATION --sku Standard_LRS
+CONN=$(az storage account show-connection-string -g $AZ_RESOURCE_GROUP -n $AZ_STORAGE_ACCOUNT_NAME -o tsv)
+AZ_STORAGE_KEY=$(az storage account keys list -g $AZ_RESOURCE_GROUP -n $AZ_STORAGE_ACCOUNT_NAME --query "[0].value" -o tsv)
+az storage container create --name $AZ_CONTAINER_NAME --account-name $AZ_STORAGE_ACCOUNT_NAME --connection-string $CONN
+az storage share create --name $AZ_SHARE_NAME --connection-string $CONN
+
+# Upload files to generate URL/SAS
+echo "Uploading ./sampleCol.json to azure files (share name: $AZ_SHARE_NAME, account name: $AZ_STORAGE_ACCOUNT_NAME, connection string: $CONN)"
+az storage file upload --share-name $AZ_SHARE_NAME --source ./sampleCol.json --path sampleCol.json --connection-string $CONN
+echo "Uploading ./tempResponsSetup.sh to storage blob (container name: $AZ_CONTAINER_NAME, account name: $AZ_STORAGE_ACCOUNT_NAME, connection string: $CONN)"
+az storage blob upload --file ./tempResponsSetup.sh --container-name $AZ_CONTAINER_NAME --name tempResponsSetup.sh --account-name $AZ_STORAGE_ACCOUNT_NAME --connection-string $CONN
+
+# Generate postman collection download SAS, update newman script, and upload
+echo "Generating SAS key (container name: $AZ_CONTAINER_NAME, expiry: $AZ_EXPIRY, connection string: $CONN)"
+SSASKEY=$(az storage blob generate-sas --container-name $AZ_CONTAINER_NAME --name sampleCol.json --permissions r --expiry $AZ_EXPIRY --connection-string $CONN -o tsv)
+SSASKEY=$(echo $SSASKEY | sed "s,&,\\\&,g") # stupid ampersand is a special char in sed... gotta escape it.
+echo "Formatted SAS key: $SSASKEY"
+SAMPLECOLDL="https://$AZ_STORAGE_ACCOUNT_NAME.blob.core.windows.net/$AZ_CONTAINER_NAME/sampleCol.json?$SSASKEY"
+cp ./newman.sh.template ./newman.sh
+sed -i -e "s,SANAME,$AZ_STORAGE_ACCOUNT_NAME,g" ./newman.sh
+sed -i -e "s,SAKEY,$AZ_STORAGE_KEY,g" ./newman.sh
+sed -i -e "s,SHARENAME,$AZ_SHARE_NAME,g" ./newman.sh
+sed -i -e "s,URLHERE,$SAMPLECOLDL,g" ./newman.sh
+echo "Uploading ./newman.sh to storage blob (container name: $AZ_CONTAINER_NAME, account name: $AZ_STORAGE_ACCOUNT_NAME, connection string: $CONN)"
+az storage blob upload --file ./newman.sh --container-name $AZ_CONTAINER_NAME --name newman.sh --account-name $AZ_STORAGE_ACCOUNT_NAME --connection-string $CONN
+
+# Generate newman script download SAS, update protected settings for harness VM, and upload
+echo "Generating SAS key (container name: $AZ_CONTAINER_NAME, expiry: $AZ_EXPIRY, connection string: $CONN)"
+NSASKEY=$(az storage blob generate-sas --container-name $AZ_CONTAINER_NAME --name newman.sh --permissions r --expiry $AZ_EXPIRY --connection-string $CONN -o tsv)
+NSASKEY=$(echo $NSASKEY | sed "s,&,\\\&,g") # stupid ampersand is a special char in sed... gotta escape it.
+echo "Formatted SAS key: $NSASKEY"
+NEWMANDL="https://$AZ_STORAGE_ACCOUNT_NAME.blob.core.windows.net/$AZ_CONTAINER_NAME/newman.sh?$NSASKEY"
+cp ./har.protectedSettings.json.template ./har.protectedSettings.json
+sed -i -e "s,URLHERE,$NEWMANDL,g" ./har.protectedSettings.json
+
+# Generate tmpResponse Script download SAS, update protected settings for Res VM, and upload
+echo "Generating SAS key (container name: $AZ_CONTAINER_NAME, expiry: $AZ_EXPIRY, connection string: $CONN)"
+RSASKEY=$(az storage blob generate-sas --container-name $AZ_CONTAINER_NAME --name tempResponsSetup.sh --permissions r --expiry $AZ_EXPIRY --connection-string $CONN -o tsv)
+RSASKEY=$(echo $RSASKEY | sed "s,&,\\\&,g") # stupid ampersand is a special char in sed... gotta escape it.
+echo "Formatted SAS key: $RSASKEY"
+RESSETUPDL="https://$AZ_STORAGE_ACCOUNT_NAME.blob.core.windows.net/$AZ_CONTAINER_NAME/tempResponsSetup.sh?$RSASKEY"
+cp ./res.protectedSettings.json.template ./res.protectedSettings.json
+sed -i -e "s,URLHERE,$RESSETUPDL,g" ./res.protectedSettings.json
+
+# Create Test Response VM
+echo "Creating Test Response VM (resource group: $AZ_RESOURCE_GROUP, name: $AZ_RESPONSE_VM_NAME, vnet name: $AZ_VNET_NAME, subnet: $AZ_SUBNET)"
+az vm create \
+    --resource-group $AZ_RESOURCE_GROUP \
+    --name $AZ_RESPONSE_VM_NAME \
+    --image UbuntuLTS \
+    --vnet-name $AZ_VNET_NAME \
+    --subnet $AZ_SUBNET \
+    --admin-username azusr \
+    --generate-ssh-keys
+
+echo "Setting AZ extension for custom script (resource group: $AZ_RESOURCE_GROUP, VM name: $AZ_RESPONSE_VM_NAME)"
+az vm extension set \
+    --resource-group $AZ_RESOURCE_GROUP \
+    --vm-name $AZ_RESPONSE_VM_NAME \
+    --name customScript \
+    --publisher Microsoft.Azure.Extensions \
+    --protected-settings ./res.protectedSettings.json
+
+# Create Test Harness VM
+echo "Creating Test Harness VM (resource group: $AZ_RESOURCE_GROUP, name: $AZ_VM_NAME, vnet name: $AZ_VNET_NAME, subnet: $AZ_SUBNET)"
+PUBLIC_IP_ADDRESS=$(az vm create \
+    --resource-group $AZ_RESOURCE_GROUP \
+    --name $AZ_VM_NAME \
+    --image UbuntuLTS \
+    --vnet-name $AZ_VNET_NAME \
+    --subnet $AZ_SUBNET \
+    --admin-username azusr \
+    --generate-ssh-keys \
+    --query "publicIpAddress" \
+    --output tsv)
+
+az vm open-port --port 80 --resource-group $AZ_RESOURCE_GROUP --name $AZ_VM_NAME
+
+echo "Setting AZ extension for custom script (resource group: $AZ_RESOURCE_GROUP, VM name: $AZ_VM_NAME)"
+az vm extension set \
+    --resource-group $AZ_RESOURCE_GROUP \
+    --vm-name $AZ_VM_NAME \
+    --name customScript \
+    --publisher Microsoft.Azure.Extensions \
+    --protected-settings ./har.protectedSettings.json
+
+# Cleanup Files
+echo "Deleting generated files"
+rm newman.sh
+rm har.protectedSettings.json
+rm res.protectedSettings.json
+
+echo "http://$PUBLIC_IP_ADDRESS/report.html"

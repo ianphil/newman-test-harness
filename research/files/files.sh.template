@@ -1,0 +1,18 @@
+#!/bin/bash
+
+mkdir /mnt/MyAzureFileShare
+
+if [ ! -d "/etc/smbcredentials" ]; then
+    mkdir /etc/smbcredentials
+fi
+
+if [ ! -f "/etc/smbcredentials/SANAME.cred" ]; then
+    echo "username=SANAME" >> /etc/smbcredentials/SANAME.cred
+    echo "password=SAKEY" >> /etc/smbcredentials/SANAME.cred
+fi
+
+chmod 600 /etc/smbcredentials/SANAME.cred
+
+echo "//SANAME.file.core.windows.net/share /mnt/MyAzureFileShare cifs nofail,vers=3.0,credentials=/etc/smbcredentials/SANAME.cred,dir_mode=0777,file_mode=0777,serverino" >> /etc/fstab
+
+mount -a

@@ -1,0 +1,42 @@
+AZ_STORAGE_ACCOUNT_NAME=ipsa002
+AZ_CONTAINER_NAME=scripts
+AZ_RG=ipsa002
+
+az group create -n $AZ_RG -l eastus
+
+az storage account create -n $AZ_STORAGE_ACCOUNT_NAME -g $AZ_RG -l eastus --sku Standard_LRS
+
+AZ_CONN_STRING=$(az storage account show-connection-string -g $AZ_RG -n $AZ_STORAGE_ACCOUNT_NAME -o tsv)
+
+AZ_STORAGE_KEY=$(az storage account keys list -g $AZ_RG -n $AZ_STORAGE_ACCOUNT_NAME --query "[0].value" -o tsv)
+
+az storage container create --name $AZ_CONTAINER_NAME --connection-string $AZ_CONN_STRING
+
+cp files.sh.template files.sh
+sed -i -e "s,SANAME,$AZ_STORAGE_ACCOUNT_NAME,g" ./files.sh
+sed -i -e "s,SAKEY,$AZ_STORAGE_KEY,g" ./files.sh
+az storage blob upload --file ./files.sh --container-name $AZ_CONTAINER_NAME --name files.sh --connection-string $AZ_CONN_STRING
+
+SSASKEY=$(az storage blob generate-sas --container-name $AZ_CONTAINER_NAME --name files.sh --permissions r --expiry 2018-09-13 --connection-string $AZ_CONN_STRING -o tsv)
+SSASKEY=$(echo $SSASKEY | sed "s,&,\\\&,g") # stupid ampersand is a special char in sed... gotta escape it.
+echo "Formatted SAS key: $SSASKEY"
+SAMPLECOLDL="https://$AZ_STORAGE_ACCOUNT_NAME.blob.core.windows.net/$AZ_CONTAINER_NAME/files.sh?$SSASKEY"
+cp ./files.protectedSettings.json.template ./files.protectedSettings.json
+sed -i -e "s,URLHERE,$SAMPLECOLDL,g" ./files.protectedSettings.json
+
+az storage share create --name share --connection-string $AZ_CONN_STRING
+
+az storage file upload --share-name "share" --source ./files.sh --path files.sh --connection-string $AZ_CONN_STRING
+
+az vm create --resource-group $AZ_RG --name MyVM --image UbuntuLTS --admin-username azusr --generate-ssh-keys 
+#104.211.7.39
+
+az vm extension set \
+    --resource-group $AZ_RG \
+    --vm-name MyVM \
+    --name customScript \
+    --publisher Microsoft.Azure.Extensions \
+    --protected-settings ./files.protectedSettings.json
+
+rm files.sh
+rm files.protectedSettings.json

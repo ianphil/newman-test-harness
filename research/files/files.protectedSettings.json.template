@@ -1,0 +1,6 @@
+{
+    "commandToExecute": "./files.sh",
+    "fileUris": [
+        "URLHERE"
+    ]
+}

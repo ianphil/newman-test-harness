@@ -1,0 +1,6 @@
+{
+    "commandToExecute": "./newman.sh",
+    "fileUris": [
+        "URLHERE"
+    ]
+}

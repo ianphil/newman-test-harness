@@ -1,0 +1,38 @@
+{
+	"info": {
+		"_postman_id": "e3f986b8-2961-4367-9c89-be16ddde8d48",
+		"name": "MSFT",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Test1",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{}"
+				},
+				"url": {
+					"raw": "https://cse-cx-prep-mock.azurewebsites.net/TapIn",
+					"protocol": "https",
+					"host": [
+						"cse-cx-prep-mock",
+						"azurewebsites",
+						"net"
+					],
+					"path": [
+						"TapIn"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
